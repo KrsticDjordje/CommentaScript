@@ -1,7 +1,7 @@
 <template>
     <div class="screen-recorder-wrap">
-        <h6 class="time q-my-md">Barcelona - Real Madrid 24.10.2024. </h6>
-        <video class="screen-player" ref="video" :srcObject="mediaStream" autoplay playsinline></video>
+        <h6 class="time q-my-md">Barcelona - Real Madrid 24.10.2024.</h6>
+        <video class="screen-player" ref="videoRef" autoplay playsinline muted></video>
         <div>
             <h5 class="time q-my-md">{{ formattedTime }}</h5>
             <q-btn v-if="!isRecording" label="Start Recording" color="secondary" @click="startRecording" />
@@ -11,10 +11,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue';
-import { QBtn } from 'quasar';
+import { ref, computed, onMounted } from "vue";
+import { QBtn } from "quasar";
+import axios from "axios";
 
 const mediaStream = ref(null);
+const videoRef = ref(null); // Referenca na video element
 const isRecording = ref(false);
 const elapsedTime = ref(0);
 let interval = null;
@@ -24,65 +26,97 @@ const startRecording = async () => {
     isRecording.value = true;
     elapsedTime.value = 0;
 
-    // Inicijalizuj snimanje
+    // Pokretanje snimanja ekrana
     mediaStream.value = await navigator.mediaDevices.getDisplayMedia({
         video: true,
-        audio: true
+        audio: true,
     });
 
-    // Kreiraj MediaRecorder
-    recorder = new MediaRecorder(mediaStream.value);
+    // Poveži video element sa streamom
+    if (videoRef.value) {
+        videoRef.value.srcObject = mediaStream.value;
+    }
 
-    // Dodaj događaj za prikupljanje i slanje podataka svakih 5 sekundi
-    recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-            uploadVideo([event.data]);
-        }
-    };
+    createNewRecorder();
 
-    // Pokreni snimanje sa timeslice parametrom od 5000 ms (5 sekundi)
-    recorder.start(5000);
-
-    // Interval za prikaz vremena
+    // Interval za merenje vremena
     interval = setInterval(() => {
         elapsedTime.value++;
     }, 1000);
 };
 
-const stopRecording = async () => {
+const stopRecording = () => {
     isRecording.value = false;
     clearInterval(interval);
 
-    // Zaustavi snimanje i pošalji poslednji deo videa
-    recorder.stop();
+    if (recorder) {
+        recorder.stop();
+    }
 
-    // Zaustavi sve streamove
-    mediaStream.value.getTracks().forEach(track => track.stop());
+    if (mediaStream.value) {
+        mediaStream.value.getTracks().forEach((track) => track.stop());
+    }
+
+    // Resetuj video element
+    if (videoRef.value) {
+        videoRef.value.srcObject = null;
+    }
 };
 
-const uploadVideo = async (recordedChunks) => {
-    const blob = new Blob(recordedChunks, { type: 'video/webm' });
-    const formData = new FormData();
-    formData.append('video', blob, 'recorded-video.webm');
+// Kreiranje novog MediaRecorder-a za svaki segment
+const createNewRecorder = () => {
+    if (recorder) {
+        recorder.ondataavailable = null; // Ukloni prethodni listener
+        recorder.stop();
+    }
 
-    console.log('Sending video chunk to API:', [...formData.entries()]);
+    recorder = new MediaRecorder(mediaStream.value);
+
+    recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+            processVideoChunk(event.data);
+        }
+    };
+
+    recorder.start(5000); // Snimanje segmenta svakih 5 sekundi
+};
+
+const processVideoChunk = (data) => {
+    const blob = new Blob([data], { type: "video/webm" });
+
+    // Slanje na API
+    uploadVideo(blob);
+
+    // Kreiraj novi MediaRecorder za sledeći segment
+    if (isRecording.value) {
+        createNewRecorder();
+    }
+};
+
+const uploadVideo = async (blob) => {
+    const formData = new FormData();
+    formData.append("video", blob, `recorded-video-${Date.now()}.webm`);
 
     try {
-        const response = await fetch('YOUR_API_ENDPOINT_HERE', {
-            method: 'POST',
-            body: formData
+        const response = await axios.post("https://verbumscript.app/v1/postVideo", {
+            formData
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP Error: ${response.status}`);
+        }
+
         const data = await response.json();
-        console.log('Video chunk uploaded successfully:', data);
+        console.log("Message from API:", data.message); // Ispis poruke u konzolu
     } catch (error) {
-        console.error('Error uploading video chunk:', error);
+        console.error("Error uploading video chunk:", error);
     }
 };
 
 const formatTime = (seconds) => {
-    const hours = String(Math.floor(seconds / 3600)).padStart(2, '0');
-    const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
-    const secs = String(seconds % 60).padStart(2, '0');
+    const hours = String(Math.floor(seconds / 3600)).padStart(2, "0");
+    const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
+    const secs = String(seconds % 60).padStart(2, "0");
     return `${hours}:${minutes}:${secs}`;
 };
 
@@ -91,13 +125,6 @@ const formattedTime = computed(() => formatTime(elapsedTime.value));
 onMounted(() => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
         alert("Vaš pretraživač ne podržava ovu funkcionalnost.");
-    }
-});
-
-// Očisti interval kada se komponenta uništi
-watch(isRecording, (newVal) => {
-    if (!newVal) {
-        clearInterval(interval);
     }
 });
 </script>
