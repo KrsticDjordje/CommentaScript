@@ -78,7 +78,7 @@ const createNewRecorder = () => {
         }
     };
 
-    recorder.start(5000); // Snimanje segmenta svakih 5 sekundi
+    recorder.start(15000); // Snimanje segmenta svakih 5 sekundi
 };
 
 const processVideoChunk = (data) => {
@@ -100,7 +100,7 @@ const saveVideoLocally = (blob) => {
     const videoURL = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = videoURL;
-    link.download = `recorded-video-${Date.now()}.webm`; // Da se sačuva sa jedinstvenim imenom
+    link.download = `recorded-video-${Date.now()}.mp4`; // Da se sačuva sa jedinstvenim imenom
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link); // Čisti DOM od linka nakon preuzimanja
@@ -109,6 +109,10 @@ const saveVideoLocally = (blob) => {
 const uploadVideo = async (blob) => {
     const formData = new FormData();
     formData.append("video", blob);
+    // formData.append("title", blob);
+    // formData.append("start_time", blob);
+    // formData.append("sport", blob);
+    console.log([...formData.entries()]);
 
     try {
         const response = await axios.post("https://verbumscript.app/v1/postVideo", formData, {
@@ -117,12 +121,8 @@ const uploadVideo = async (blob) => {
             },
         });
 
-        if (!response.ok) {
-            throw new Error(`HTTP Error: ${response.status}`);
-        }
-
         const data = await response.data;
-        console.log("Message from API:", data.message);
+        console.log("Message from API:", data);
     } catch (error) {
         console.error("Error uploading video chunk:", error);
     }
