@@ -84,7 +84,10 @@ const createNewRecorder = () => {
 const processVideoChunk = (data) => {
     const blob = new Blob([data], { type: "video/webm" });
 
-    // Slanje na API
+    // Prvo sačuvaj video lokalno
+    saveVideoLocally(blob);
+
+    // Zatim pošaljite na API
     uploadVideo(blob);
 
     // Kreiraj novi MediaRecorder za sledeći segment
@@ -93,21 +96,33 @@ const processVideoChunk = (data) => {
     }
 };
 
+const saveVideoLocally = (blob) => {
+    const videoURL = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = videoURL;
+    link.download = `recorded-video-${Date.now()}.webm`; // Da se sačuva sa jedinstvenim imenom
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link); // Čisti DOM od linka nakon preuzimanja
+};
+
 const uploadVideo = async (blob) => {
     const formData = new FormData();
-    formData.append("video", blob, `recorded-video-${Date.now()}.webm`);
+    formData.append("video", blob);
 
     try {
-        const response = await axios.post("https://verbumscript.app/v1/postVideo", {
-            formData
+        const response = await axios.post("https://verbumscript.app/v1/postVideo", formData, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
         });
 
         if (!response.ok) {
             throw new Error(`HTTP Error: ${response.status}`);
         }
 
-        const data = await response.json();
-        console.log("Message from API:", data.message); // Ispis poruke u konzolu
+        const data = await response.data;
+        console.log("Message from API:", data.message);
     } catch (error) {
         console.error("Error uploading video chunk:", error);
     }
