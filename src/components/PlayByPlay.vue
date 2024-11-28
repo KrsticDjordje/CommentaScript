@@ -1,20 +1,15 @@
 <template>
     <div class="play-by-play">
+        <!-- <h6 class="text-white">Play by Play</h6> -->
+        <q-btn v-if="filteredEvents.length > 0" label="+ New Match" color="secondary" @click="deleteAll"
+            class="q-my-md" />
+        <p v-else class="text-white">You are ready for a new match, fill in the details about the match and start
+            recording!</p>
         <ul>
-            <li v-for="(event, index) in events" :key="index" @click="startEditing(index)">
+            <li v-for="(event, index) in filteredEvents" :key="index">
                 <div class="event-content">
-                    <span class="event-time">{{ event.time }}'</span> -
-                    <span v-if="editingIndex === index">
-                        <input v-model="event.description" @blur="finishEditing" @keyup.enter="finishEditing"
-                            class="edit-input" />
-                    </span>
-                    <span v-else>
-                        {{ event.description }}
-                    </span>
-                    <!-- Prikaz videa ako postoji -->
-                    <div v-if="event.video" class="video-container">
-                        <video controls :src="event.video" class="event-video"></video>
-                    </div>
+                    <span class="event-time">{{ event.timestamp }}'</span> -
+                    <span>{{ event.message }}</span>
                 </div>
             </li>
         </ul>
@@ -22,38 +17,55 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 
-// Reaktivna lista događaja sa minutazom i video linkovima
-const events = ref([
-    { time: 5, description: '⚽ Igrač 1 je postigao spektakularan gol! Oduševio je sve prisutne!', video: 'https://videos.pexels.com/video-files/15448993/15448993-hd_1920_1080_60fps.mp4' },
-    { time: 12, description: '🚨 Igrač 2 je izveo ključni prekršaj! Sudija pokazuje žuti karton.' },
-    { time: 25, description: '🤝 Igrač 3 je napravio fantastičnu asistenciju! Pronašao je svog suigrača savršenim pasom.', video: 'https://videos.pexels.com/video-files/15448993/15448993-hd_1920_1080_60fps.mp4' },
-    { time: 30, description: '🎉 Tim je proslavio pobedu! Navijači su u transu!' },
-    { time: 45, description: '🔥 Gledatelji su oduševljeni! Atmosfera na stadionu je neverovatna!' },
-    { time: 60, description: '🌟 Igrač 4 dolazi na teren i odmah pravi razliku! Publika ga pozdravlja ovacijama.' },
-    { time: 70, description: '💪 Igrač 6 je izveo sjajan dribling! Protivnici su nemoćni.' },
-    { time: 75, description: '⚡ Nevjerojatna odbrana golmana! Tim ostaje u prednosti, publika aplaudira.' },
-    { time: 80, description: '🎯 Igrač 5 je još jednom zapucao prema golu! Ova utakmica je puna uzbuđenja!' },
-    { time: 85, description: '🔔 Poslednja petina! Svaki trenutak može promeniti tok utakmice.' },
-    { time: 90, description: '⏰ Utakmica se bliži kraju, napetost raste! Svi očajnički čekaju poslednji zvižduk.' },
-    { time: 92, description: '🌪️ Dramatičan trenutak! Sudija pokazuje na penal za protivnički tim!' },
-    { time: 93, description: '🚀 Poslednji udarac! Da li će se izjednačiti? Navijači zadržavaju dah!' },
-    { time: 94, description: '🎊 Utakmica je gotova! Tim je odneo pobedu u dramatičnom završetku!' },
-])
+const events = ref([]);
+let fetchInterval = null;
 
-// Praćenje indexa opisa koji je u režimu uređivanja
-const editingIndex = ref(null)
 
-// Početak uređivanja
-const startEditing = (index) => {
-    editingIndex.value = index
-}
+const loadFromLocalStorage = () => {
+    const storedData = localStorage.getItem('playByPlayData');
+    if (storedData) {
+        events.value = JSON.parse(storedData);
+    } else {
+        events.value = [];
+    }
+};
 
-// Završetak uređivanja
-const finishEditing = () => {
-    editingIndex.value = null
-}
+
+const deleteAll = () => {
+    localStorage.removeItem('playByPlayData');
+    events.value = [];
+};
+
+
+const startFetchingData = () => {
+    fetchInterval = setInterval(() => {
+        loadFromLocalStorage();
+    }, 1000);
+};
+
+
+const stopFetchingData = () => {
+    if (fetchInterval) {
+        clearInterval(fetchInterval);
+    }
+};
+
+
+onMounted(() => {
+    loadFromLocalStorage();
+    startFetchingData();
+});
+
+
+onUnmounted(() => {
+    stopFetchingData();
+});
+
+const filteredEvents = computed(() =>
+    events.value.filter((event) => event.message !== "BORING")
+);
 </script>
 
 <style scoped>
@@ -82,30 +94,7 @@ li:hover {
     background-color: #3d3445;
 }
 
-/* Stil za input polje u režimu uređivanja */
-.edit-input {
-    background: transparent;
-    border: none;
-    border-bottom: 1px solid white;
-    color: white;
-    width: 100%;
-    outline: none;
-}
-
 .play-by-play::-webkit-scrollbar {
     display: none;
-}
-
-/* Stilovi za video */
-.video-container {
-    margin-top: 10px;
-    justify-self: center;
-}
-
-.event-video {
-    width: auto;
-    max-height: 150px;
-    border-radius: 4px;
-
 }
 </style>
