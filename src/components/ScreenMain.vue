@@ -1,49 +1,89 @@
 <template>
     <div class="screen-recorder-wrap">
-        <h6 class="time q-my-md">Barcelona - Real Madrid 24.10.2024.</h6>
-        <video class="screen-player" ref="videoRef" autoplay playsinline muted></video>
-        <div>
-            <h5 class="time q-my-md">{{ formattedTime }}</h5>
-            <q-btn v-if="!isRecording" label="Start Recording" color="secondary" @click="startRecording" />
-            <q-btn v-if="isRecording" label="Stop Recording" color="negative" @click="stopRecording" />
+
+        <div v-if="!isRecording && !isRecordingStarted" class="q-pa-md">
+            <h6 class="text-h6 q-my-md text-white">Enter Match Details</h6>
+
+            <q-form @submit.prevent="startRecording">
+
+                <q-input v-model="matchTitle" label="Match Title" filled :rules="[val => !!val || 'Title is required']"
+                    class="q-mb-md" />
+
+                <q-input v-model="startTime" label="Start Time" type="time" filled
+                    :rules="[val => !!val || 'Start time is required']" class="q-mb-md" />
+
+                <q-select v-model="selectedSport" :options="sports" label="Select Sport" filled
+                    :rules="[val => !!val || 'Sport is required']" class="q-mb-md" />
+
+                <q-btn label="Start Recording" color="secondary" type="submit" class=" q-mt-md" />
+            </q-form>
+        </div>
+
+        <div v-else>
+            <video class="screen-player" ref="videoRef" autoplay playsinline muted></video>
+            <div>
+                <h5 class="time q-my-md">{{ formattedTime }}</h5>
+                <q-btn v-if="isRecording" label="Stop Recording" color="negative" @click="stopRecording" class="" />
+                <q-btn v-if="!isRecording" label="Start Recording" color="secondary" @click="startRecording"
+                    class="q-mt-md" />
+            </div>
         </div>
     </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
-import { QBtn } from "quasar";
-import axios from "axios";
+import { ref, computed, onMounted } from 'vue';
+import axios from 'axios';
 
 const mediaStream = ref(null);
-const videoRef = ref(null); // Referenca na video element
+const videoRef = ref(null);
 const isRecording = ref(false);
+const isRecordingStarted = ref(false);
 const elapsedTime = ref(0);
 let interval = null;
 let recorder = null;
 
+
+const matchTitle = ref('');
+const startTime = ref('');
+const selectedSport = ref('');
+const sports = ref([
+    { label: 'Football', value: 'fudbal' },
+    { label: 'Basketball', value: 'basket' },
+    { label: 'Tennis', value: 'tenis' },
+]);
+
+
 const startRecording = async () => {
+    if (!matchTitle.value || !startTime.value || !selectedSport.value) {
+        alert('Please fill in all fields.');
+        return;
+    }
+
+    isRecordingStarted.value = true;
     isRecording.value = true;
     elapsedTime.value = 0;
 
-    // Pokretanje snimanja ekrana
+
     mediaStream.value = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: true,
     });
 
-    // Poveži video element sa streamom
     if (videoRef.value) {
         videoRef.value.srcObject = mediaStream.value;
     }
 
     createNewRecorder();
 
-    // Interval za merenje vremena
     interval = setInterval(() => {
         elapsedTime.value++;
     }, 1000);
+
+
+    sendMatchDetailsToAPI();
 };
+
 
 const stopRecording = () => {
     isRecording.value = false;
@@ -57,16 +97,15 @@ const stopRecording = () => {
         mediaStream.value.getTracks().forEach((track) => track.stop());
     }
 
-    // Resetuj video element
     if (videoRef.value) {
         videoRef.value.srcObject = null;
     }
 };
 
-// Kreiranje novog MediaRecorder-a za svaki segment
+
 const createNewRecorder = () => {
     if (recorder) {
-        recorder.ondataavailable = null; // Ukloni prethodni listener
+        recorder.ondataavailable = null;
         recorder.stop();
     }
 
@@ -78,19 +117,16 @@ const createNewRecorder = () => {
         }
     };
 
-    recorder.start(15000); // Snimanje segmenta svakih 5 sekundi
+    recorder.start(15000); // Vreme slanja videa na API
 };
 
 const processVideoChunk = (data) => {
-    const blob = new Blob([data], { type: "video/webm" });
+    const blob = new Blob([data], { type: 'video/webm' });
 
-    // Prvo sačuvaj video lokalno
-    saveVideoLocally(blob);
+    // saveVideoLocally(blob);
 
-    // Zatim pošaljite na API
     uploadVideo(blob);
 
-    // Kreiraj novi MediaRecorder za sledeći segment
     if (isRecording.value) {
         createNewRecorder();
     }
@@ -100,38 +136,47 @@ const saveVideoLocally = (blob) => {
     const videoURL = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = videoURL;
-    link.download = `recorded-video-${Date.now()}.mp4`; // Da se sačuva sa jedinstvenim imenom
+    link.download = `recorded-video-${Date.now()}.mp4`;
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link); // Čisti DOM od linka nakon preuzimanja
+    document.body.removeChild(link);
 };
 
 const uploadVideo = async (blob) => {
     const formData = new FormData();
-    formData.append("video", blob);
-    // formData.append("title", blob);
-    // formData.append("start_time", blob);
-    // formData.append("sport", blob);
-    console.log([...formData.entries()]);
+    formData.append('video', blob);
+    formData.append('title', matchTitle.value);
+    formData.append('start_time', startTime.value);
+    formData.append('sport', selectedSport.value);
 
     try {
-        const response = await axios.post("https://verbumscript.app/v1/postVideo", formData, {
+        const response = await axios.post('https://verbumscript.app/v1/postVideo', formData, {
             headers: {
-                "Content-Type": "multipart/form-data",
+                'Content-Type': 'multipart/form-data',
             },
         });
 
-        const data = await response.data;
-        console.log("Message from API:", data);
+        const data = response.data;
+        console.log('Message from API:', data);
+
+
+        saveToLocalStorage(data);
     } catch (error) {
-        console.error("Error uploading video chunk:", error);
+        console.error('Error uploading video chunk:', error);
     }
 };
 
+
+const saveToLocalStorage = (newData) => {
+    const storedData = JSON.parse(localStorage.getItem('playByPlayData')) || [];
+    storedData.push(newData);
+    localStorage.setItem('playByPlayData', JSON.stringify(storedData));
+};
+
 const formatTime = (seconds) => {
-    const hours = String(Math.floor(seconds / 3600)).padStart(2, "0");
-    const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
-    const secs = String(seconds % 60).padStart(2, "0");
+    const hours = String(Math.floor(seconds / 3600)).padStart(2, '0');
+    const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+    const secs = String(seconds % 60).padStart(2, '0');
     return `${hours}:${minutes}:${secs}`;
 };
 
@@ -139,7 +184,7 @@ const formattedTime = computed(() => formatTime(elapsedTime.value));
 
 onMounted(() => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-        alert("Vaš pretraživač ne podržava ovu funkcionalnost.");
+        alert('Vaš pretraživač ne podržava ovu funkcionalnost.');
     }
 });
 </script>
@@ -159,5 +204,9 @@ onMounted(() => {
 
 .time {
     color: white;
+}
+
+.q-field--filled .q-field__control {
+    background: #ffffff79 !important;
 }
 </style>
